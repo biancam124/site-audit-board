@@ -1,0 +1,1199 @@
+import { useState, useCallback, useRef, useEffect } from "react";
+import { Search, BarChart3, Layout, Plus, X, ChevronDown, ChevronRight, GripVertical,
+  AlertTriangle, Check, Pencil, RotateCcw, MapPin, Map, Eye, Upload,
+  ArrowRight, Layers, Target, FileText, Home, Star, Bookmark, CheckCircle, Trash2 } from "lucide-react";
+
+/* ═══════════════════════════════════════════════════════════════════
+   DESIGN TOKENS — Saniti design language
+   ═══════════════════════════════════════════════════════════════════ */
+const T = {
+  canvas:"#0b0b0b", canvasSoft:"#212121", canvasLight:"#ffffff", canvasPaper:"#ededed",
+  ink:"#0b0b0b", inkSoft:"#212121", onPrimary:"#ffffff",
+  ash:"#b9b9b9", mute:"#797979", graphite:"#353535",
+  brand:"#f36458", brandDeep:"#dd0000",
+  hairline:"#ededed", hairlineSoft:"#353535",
+  success:"#37cd84", successDark:"#1a7a45",
+  rXs:"3px", rSm:"4px", rMd:"5px", rLg:"6px", rMkt:"12px", rFull:"9999px",
+  col:{
+    flagged:      {bg:"#2a1a0a",border:"#f36458",text:"#f8c4be",label:"Flagged"},
+    investigating:{bg:"#0d1f12",border:"#4A7C50",text:"#a3c9a8",label:"Investigating"},
+    resolved:     {bg:"#0a1220",border:"#4A6E8C",text:"#9ab4cc",label:"Resolved"},
+    designed:     {bg:"#0d1a10",border:"#3D6B45",text:"#8fbf97",label:"Designed-for"},
+  },
+  conf:{
+    High:  {bg:"#0d1f12",text:"#a3c9a8",dot:"#4A7C50"},
+    Medium:{bg:"#2a1a0a",text:"#f8c4be",dot:"#f36458"},
+    Low:   {bg:"#1f0d0d",text:"#f0a0a0",dot:"#dd0000"},
+  },
+  // Bookmark category colours
+  bm:{
+    Concern:    {color:"#f36458",label:"Concern"},
+    Opportunity:{color:"#37cd84",label:"Opportunity"},
+    Observe:    {color:"#55beff",label:"Observe"},
+    Verify:     {color:"#C9A96E",label:"Verify"},
+  },
+};
+
+const STATUSES=["flagged","investigating","resolved","designed"];
+const FONT_SANS="'DM Sans',system-ui,sans-serif";
+const FONT_MONO="'IBM Plex Mono',monospace";
+const BM_CATS=["Concern","Opportunity","Observe","Verify"];
+
+/* ═══════════════════════════════════════════════════════════════════
+   DEMO DATA
+   ═══════════════════════════════════════════════════════════════════ */
+const SITE={name:"Lachlan's Lines Park",address:"Jarvis Circuit, Macquarie Park NSW 2113",brief:"Mixed-use precinct open space upgrade"};
+const DEMO_OBJ=[
+  {id:"o1",name:"Improve pedestrian connectivity to metro stations",short:"Connectivity"},
+  {id:"o2",name:"Enhance microclimate comfort in public spaces",short:"Microclimate"},
+  {id:"o3",name:"Activate ground-floor interfaces along Halifax St",short:"Activation"},
+  {id:"o4",name:"Increase canopy cover and shade provision",short:"Canopy cover"},
+];
+const DEMO_F=[
+  {id:"F1",status:"flagged",cat:"Movement",mx:58,my:35,checked:false,
+   ev:"Aerial shows a worn diagonal track from the playground area toward Halifax Street, bypassing the formal curved path network",
+   q:"Walk this route — is there a bus stop, metro shortcut, or building entrance explaining the desire line?",
+   imp:"If confirmed, the brief's circulation plan may need to formalise this connection rather than force the designed detour",
+   conf:"High",objs:["o1"],res:"",dr:""},
+  {id:"F2",status:"flagged",cat:"Microclimate",mx:82,my:28,checked:false,
+   ev:"Ground photos show wind-driven litter accumulation at the base of the Tower 2 podium wall, suggesting a persistent downdraft zone",
+   q:"Stand at this location at midday — is there noticeable wind acceleration between the tower and the park edge?",
+   imp:"If confirmed, any proposed seating or activation at this podium interface may require wind mitigation",
+   conf:"Medium",objs:["o2","o3"],res:"",dr:""},
+  {id:"F3",status:"investigating",cat:"Social use",mx:40,my:62,checked:false,
+   ev:"Aerial shows skate area surface wear concentrated heavily on the entry ramp, with the deeper bowl area showing minimal wear patterns",
+   q:"Observe the skate area at different times — is it used primarily as a through-route rather than for skating?",
+   imp:"If the skate area functions mainly as a movement corridor, the brief's open space strategy may be overestimating recreational use",
+   conf:"Medium",objs:["o1"],res:"",dr:""},
+  {id:"F4",status:"flagged",cat:"Drainage",mx:25,my:78,checked:false,
+   ev:"Aerial shows a darker, denser grass patch in the low corner of the park near Jarvis Circuit, distinct from surrounding turf colour",
+   q:"Check this corner after rain or ask council about subsurface drainage — is there a soak point or blocked stormwater inlet?",
+   imp:"If confirmed, may constrain the brief's proposed ground-level program in this corner and require WSUD integration",
+   conf:"High",objs:[],res:"",dr:""},
+  {id:"F5",status:"resolved",cat:"Overshadowing",mx:55,my:18,checked:true,
+   ev:"Aerial shadow patterns indicate significant tower overshadowing onto the park's northern play areas in apparent mid-afternoon conditions",
+   q:"Verify shadow reach at 2pm midwinter using sun-path modelling — does the playground receive less than 2hrs direct sun?",
+   imp:"If confirmed, the brief's play space location may conflict with SEPP 65 amenity guidelines for solar access",
+   conf:"High",objs:["o4","o2"],
+   res:"Confirmed via shadow study — playground receives ~1.5hrs direct sun at June solstice. Council accepted as trade-off during original DA.",dr:""},
+  {id:"F6",status:"flagged",cat:"Movement",mx:88,my:55,checked:false,
+   ev:"Ground photos show informal crossing point from Halifax Street into the park at a gap in the planting strip, with visibly worn kerb edges",
+   q:"Is this crossing aligned with a residential entry or car park exit? Count pedestrians using it vs the formal crossing 40m south.",
+   imp:"If traffic volume justifies it, the brief may need to advocate for a formal crossing or kerb ramp at this location",
+   conf:"Medium",objs:["o1"],res:"",dr:""},
+];
+const DEMO_BM=[
+  {id:"b1",cat:"Opportunity",mx:35,my:42,label:"Open lawn activation zone"},
+  {id:"b2",cat:"Concern",mx:70,my:22,label:"Tower shadow edge — winter"},
+];
+
+/* ═══════════════════════════════════════════════════════════════════
+   CONFETTI ENGINE
+   ═══════════════════════════════════════════════════════════════════ */
+function useConfetti(){
+  const [particles,setParticles]=useState([]);
+  const fire=useCallback((x,y)=>{
+    const cols=["#f36458","#37cd84","#55beff","#C9A96E","#ffffff","#f0f0f0"];
+    const ps=Array.from({length:28},(_,i)=>({
+      id:Date.now()+i,
+      x,y,
+      vx:(Math.random()-0.5)*6,
+      vy:-(Math.random()*5+2),
+      rot:Math.random()*360,
+      rotV:(Math.random()-0.5)*15,
+      col:cols[Math.floor(Math.random()*cols.length)],
+      size:Math.random()*5+3,
+      life:1,
+      shape:Math.random()>0.5?"rect":"circle",
+    }));
+    setParticles(p=>[...p,...ps]);
+    let frame;
+    const tick=()=>{
+      setParticles(p=>{
+        const next=p.map(pt=>({...pt,x:pt.x+pt.vx,y:pt.y+pt.vy,vy:pt.vy+0.18,rot:pt.rot+pt.rotV,life:pt.life-0.022}))
+          .filter(pt=>pt.life>0);
+        if(next.length>0){frame=requestAnimationFrame(tick);}
+        return next;
+      });
+    };
+    frame=requestAnimationFrame(tick);
+    return()=>cancelAnimationFrame(frame);
+  },[]);
+  return{particles,fire};
+}
+
+function ConfettiLayer({particles}){
+  if(!particles.length)return null;
+  return(
+    <div style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:9999}}>
+      {particles.map(p=>(
+        <div key={p.id} style={{position:"absolute",left:p.x,top:p.y,
+          width:p.shape==="rect"?p.size*2:p.size,height:p.size,
+          borderRadius:p.shape==="circle"?"50%":"2px",
+          background:p.col,opacity:p.life,
+          transform:`rotate(${p.rot}deg)`,pointerEvents:"none"}}/>
+      ))}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   MICRO COMPONENTS
+   ═══════════════════════════════════════════════════════════════════ */
+const Eyebrow=({children,style={}})=>(
+  <span style={{fontFamily:FONT_MONO,fontSize:11,fontWeight:400,letterSpacing:"0.08em",
+    textTransform:"uppercase",color:T.mute,...style}}>{children}</span>
+);
+const ConfBadge=({l})=>{
+  const c=T.conf[l]||T.conf.Medium;
+  return(<span style={{display:"inline-flex",alignItems:"center",gap:5,fontFamily:FONT_MONO,
+    fontSize:10,padding:"2px 8px",borderRadius:T.rSm,background:c.bg,color:c.text}}>
+    <span style={{width:5,height:5,borderRadius:"50%",background:c.dot,flexShrink:0}}/>{l}</span>);
+};
+const CatTag=({c})=>(<span style={{fontFamily:FONT_MONO,fontSize:10,padding:"2px 7px",
+  borderRadius:T.rSm,background:T.canvasSoft,color:T.ash,border:`1px solid ${T.hairlineSoft}`}}>{c}</span>);
+const ObjTag=({name})=>(<span style={{fontFamily:FONT_MONO,fontSize:10,padding:"2px 6px",
+  borderRadius:T.rSm,background:T.graphite,color:T.ash}}>{name}</span>);
+
+function StatusDrop({current,onChange}){
+  const [open,setOpen]=useState(false);
+  const ref=useRef(null);
+  useEffect(()=>{const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false)};
+    document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h);},[]);
+  const m=T.col[current];
+  return(<div ref={ref} style={{position:"relative"}}>
+    <button onClick={()=>setOpen(!open)} style={{display:"flex",alignItems:"center",gap:4,
+      fontFamily:FONT_MONO,fontSize:10,padding:"3px 8px",borderRadius:T.rSm,
+      border:`1px solid ${m.border}`,background:m.bg,color:m.text,cursor:"pointer"}}>
+      {T.col[current].label}<ChevronDown size={10}/></button>
+    {open&&<div style={{position:"absolute",top:"100%",left:0,marginTop:4,background:T.canvasSoft,
+      border:`1px solid ${T.hairlineSoft}`,borderRadius:T.rMd,boxShadow:"0 8px 24px rgba(0,0,0,0.4)",
+      zIndex:100,minWidth:140,overflow:"hidden"}}>
+      {STATUSES.map(s=>(<button key={s} onClick={()=>{onChange(s);setOpen(false)}} style={{
+        display:"block",width:"100%",textAlign:"left",padding:"8px 12px",border:"none",
+        cursor:"pointer",fontFamily:FONT_MONO,fontSize:11,fontWeight:s===current?500:400,
+        background:s===current?T.graphite:"transparent",color:T.col[s].text}}
+        onMouseEnter={e=>e.target.style.background=T.graphite}
+        onMouseLeave={e=>e.target.style.background=s===current?T.graphite:"transparent"}>
+        {T.col[s].label}</button>))}
+    </div>}
+  </div>);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   CHECK-OFF ACTION SHEET
+   ═══════════════════════════════════════════════════════════════════ */
+function CheckOffSheet({finding,onKeep,onRemove,onMarkBoard,onClose}){
+  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",
+    alignItems:"center",justifyContent:"center",zIndex:500}} onClick={onClose}>
+    <div onClick={e=>e.stopPropagation()} style={{background:T.canvasSoft,
+      border:`1px solid ${T.success}`,borderRadius:T.rMkt,padding:28,maxWidth:360,width:"100%",
+      boxShadow:`0 0 40px rgba(55,205,132,0.25)`}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
+        <CheckCircle size={22} style={{color:T.success}}/>
+        <h3 style={{fontFamily:FONT_SANS,fontSize:18,fontWeight:400,color:T.onPrimary,
+          margin:0,letterSpacing:"-0.2px"}}>{finding.id} checked off</h3>
+      </div>
+      <p style={{fontFamily:FONT_SANS,fontSize:13,color:T.ash,margin:"0 0 22px",lineHeight:1.5}}>
+        {finding.q}
+      </p>
+      <Eyebrow style={{display:"block",marginBottom:12}}>What would you like to do with this finding?</Eyebrow>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        <button onClick={onMarkBoard} style={{padding:"10px 16px",fontFamily:FONT_SANS,fontSize:13,
+          fontWeight:500,borderRadius:T.rFull,border:`1px solid ${T.success}`,
+          background:"rgba(55,205,132,0.1)",color:T.success,cursor:"pointer",textAlign:"left",
+          display:"flex",alignItems:"center",gap:8}}>
+          <Check size={14}/>Mark as resolved on board</button>
+        <button onClick={onKeep} style={{padding:"10px 16px",fontFamily:FONT_SANS,fontSize:13,
+          fontWeight:400,borderRadius:T.rFull,border:`1px solid ${T.hairlineSoft}`,
+          background:"transparent",color:T.ash,cursor:"pointer",textAlign:"left",
+          display:"flex",alignItems:"center",gap:8}}>
+          <Bookmark size={14}/>Keep on board as-is</button>
+        <button onClick={onRemove} style={{padding:"10px 16px",fontFamily:FONT_SANS,fontSize:13,
+          fontWeight:400,borderRadius:T.rFull,border:`1px solid ${T.hairlineSoft}`,
+          background:"transparent",color:T.mute,cursor:"pointer",textAlign:"left",
+          display:"flex",alignItems:"center",gap:8}}>
+          <Trash2 size={14}/>Remove from board</button>
+      </div>
+    </div>
+  </div>);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   BOOKMARK MODAL
+   ═══════════════════════════════════════════════════════════════════ */
+function BookmarkModal({pos,customCats,onAdd,onClose}){
+  const [cat,setCat]=useState("Concern");
+  const [label,setLabel]=useState("");
+  const [newCat,setNewCat]=useState("");
+  const [addingCat,setAddingCat]=useState(false);
+  const allCats=[...BM_CATS,...customCats];
+  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",display:"flex",
+    alignItems:"center",justifyContent:"center",zIndex:500}} onClick={onClose}>
+    <div onClick={e=>e.stopPropagation()} style={{background:T.canvasSoft,
+      border:`1px solid ${T.hairlineSoft}`,borderRadius:T.rMkt,padding:24,maxWidth:340,width:"100%",
+      boxShadow:"0 16px 48px rgba(0,0,0,0.5)"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+        <div>
+          <Eyebrow style={{display:"block",marginBottom:4}}>New bookmark</Eyebrow>
+          <h3 style={{fontFamily:FONT_SANS,fontSize:16,fontWeight:400,color:T.onPrimary,
+            margin:0,letterSpacing:"-0.2px"}}>Place on map</h3>
+        </div>
+        <button onClick={onClose} style={{background:"none",border:`1px solid ${T.hairlineSoft}`,
+          borderRadius:T.rSm,padding:5,cursor:"pointer",color:T.mute,display:"flex"}}>
+          <X size={14}/></button>
+      </div>
+      <div style={{marginBottom:14}}>
+        <Eyebrow style={{display:"block",marginBottom:7}}>Category</Eyebrow>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+          {allCats.map(c=>{
+            const col=T.bm[c]?.color||T.ash;
+            const active=cat===c;
+            return(<button key={c} onClick={()=>setCat(c)} style={{fontFamily:FONT_MONO,fontSize:10,
+              padding:"4px 10px",borderRadius:T.rFull,cursor:"pointer",
+              border:`1px solid ${active?col:T.hairlineSoft}`,
+              background:active?`${col}22`:"transparent",
+              color:active?col:T.ash}}>{c}</button>);
+          })}
+          {!addingCat&&<button onClick={()=>setAddingCat(true)} style={{fontFamily:FONT_MONO,fontSize:10,
+            padding:"4px 10px",borderRadius:T.rFull,cursor:"pointer",
+            border:`1px dashed ${T.hairlineSoft}`,background:"transparent",color:T.mute}}>
+            + custom</button>}
+        </div>
+        {addingCat&&<div style={{display:"flex",gap:6}}>
+          <input value={newCat} onChange={e=>setNewCat(e.target.value)} placeholder="Category name"
+            autoFocus
+            style={{flex:1,padding:"5px 8px",fontFamily:FONT_SANS,fontSize:12,borderRadius:T.rMd,
+              border:`1px solid ${T.hairlineSoft}`,background:T.canvas,color:T.onPrimary,outline:"none"}}
+            onKeyDown={e=>{if(e.key==="Enter"&&newCat.trim()){setCat(newCat.trim());setAddingCat(false);}}}/>
+          <button onClick={()=>{if(newCat.trim()){setCat(newCat.trim());setAddingCat(false);}}}
+            style={{padding:"5px 10px",fontFamily:FONT_SANS,fontSize:12,borderRadius:T.rMd,
+              border:"none",background:T.brand,color:T.ink,cursor:"pointer",fontWeight:500}}>Add</button>
+        </div>}
+      </div>
+      <div style={{marginBottom:20}}>
+        <Eyebrow style={{display:"block",marginBottom:7}}>Label</Eyebrow>
+        <input value={label} onChange={e=>setLabel(e.target.value)} placeholder="e.g. Potential activation zone..."
+          style={{width:"100%",padding:"8px 10px",fontFamily:FONT_SANS,fontSize:13,borderRadius:T.rMd,
+            border:`1px solid ${T.hairlineSoft}`,background:T.canvas,color:T.onPrimary,
+            outline:"none",boxSizing:"border-box"}}/>
+      </div>
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+        <button onClick={onClose} style={{padding:"7px 16px",fontFamily:FONT_SANS,fontSize:13,
+          borderRadius:T.rFull,border:`1px solid ${T.hairlineSoft}`,background:"transparent",
+          color:T.ash,cursor:"pointer"}}>Cancel</button>
+        <button onClick={()=>{if(label.trim()){onAdd({cat,label:label.trim(),mx:pos.mx,my:pos.my,
+          id:"b"+Date.now()});}}} style={{padding:"7px 16px",fontFamily:FONT_SANS,fontSize:13,
+          fontWeight:500,borderRadius:T.rFull,border:"none",background:T.brand,
+          color:T.ink,cursor:"pointer"}}>Place bookmark</button>
+      </div>
+    </div>
+  </div>);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   INTERACTIVE SITE MAP — enhanced with check-off + bookmarks
+   ═══════════════════════════════════════════════════════════════════ */
+function SiteMap({findings,bookmarks,customBmCats,objs,onSelect,onCheck,onAddBookmark,onRemoveBookmark,confetti}){
+  const [hover,setHover]=useState(null);
+  const [bmHover,setBmHover]=useState(null);
+  const [bookmarkMode,setBookmarkMode]=useState(false);
+  const [pendingPos,setPendingPos]=useState(null);
+  const [flashId,setFlashId]=useState(null);
+  const svgRef=useRef(null);
+
+  const hf=hover?findings.find(x=>x.id===hover):null;
+  const hb=bmHover?bookmarks.find(x=>x.id===bmHover):null;
+  const allBmCats=[...BM_CATS,...customBmCats];
+
+  // Trigger green flash on a finding
+  const triggerFlash=useCallback((id)=>{
+    setFlashId(id);
+    setTimeout(()=>setFlashId(null),1200);
+  },[]);
+
+  const handleSvgClick=useCallback((e)=>{
+    if(!bookmarkMode)return;
+    const svg=svgRef.current;
+    if(!svg)return;
+    const rect=svg.getBoundingClientRect();
+    const mx=((e.clientX-rect.left)/rect.width)*100;
+    const my=((e.clientY-rect.top)/rect.height)*100;
+    setPendingPos({mx:Math.round(mx),my:Math.round(my)});
+  },[bookmarkMode]);
+
+  const handleCheck=(f,e)=>{
+    e.stopPropagation();
+    // Get SVG position for confetti
+    const svg=svgRef.current;
+    if(svg){
+      const rect=svg.getBoundingClientRect();
+      const cx=rect.left+(f.mx/100)*rect.width;
+      const cy=rect.top+(f.my/100)*rect.height;
+      confetti.fire(cx,cy);
+    }
+    triggerFlash(f.id);
+    onCheck(f);
+  };
+
+  return(<>
+    <div style={{position:"relative",background:T.canvasSoft,borderRadius:T.rLg,
+      border:`1px solid ${T.hairlineSoft}`,overflow:"hidden"}}>
+      {/* Map header */}
+      <div style={{padding:"10px 14px",borderBottom:`1px solid ${T.hairlineSoft}`,
+        display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <Map size={14} style={{color:T.brand}}/>
+          <span style={{fontFamily:FONT_SANS,fontSize:13,fontWeight:500,color:T.onPrimary}}>
+            Site plan — Lachlan's Lines Park
+          </span>
+          <span style={{fontFamily:FONT_MONO,fontSize:10,color:T.mute}}>
+            {findings.filter(f=>f.checked).length}/{findings.length} verified
+          </span>
+        </div>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          {/* Bookmark mode toggle */}
+          <button onClick={()=>setBookmarkMode(b=>!b)} style={{display:"flex",alignItems:"center",gap:5,
+            padding:"5px 12px",fontFamily:FONT_MONO,fontSize:10,borderRadius:T.rFull,cursor:"pointer",
+            border:`1px solid ${bookmarkMode?T.brand:T.hairlineSoft}`,
+            background:bookmarkMode?"rgba(243,100,88,0.1)":"transparent",
+            color:bookmarkMode?T.brand:T.mute,transition:"all 0.15s"}}>
+            <Bookmark size={11}/>{bookmarkMode?"Click map to place":"Add bookmark"}
+          </button>
+          <Eyebrow>Hover markers · click ✓ to verify</Eyebrow>
+        </div>
+      </div>
+
+      {/* Bookmark mode banner */}
+      {bookmarkMode&&<div style={{background:"rgba(243,100,88,0.08)",borderBottom:`1px solid rgba(243,100,88,0.3)`,
+        padding:"7px 14px",display:"flex",alignItems:"center",gap:8}}>
+        <span style={{width:6,height:6,borderRadius:"50%",background:T.brand,flexShrink:0}}/>
+        <span style={{fontFamily:FONT_MONO,fontSize:11,color:T.brand}}>Bookmark mode active — click anywhere on the map to place a marker. Click again to exit.</span>
+        <button onClick={()=>setBookmarkMode(false)} style={{marginLeft:"auto",background:"none",border:"none",
+          cursor:"pointer",color:T.brand,display:"flex"}}><X size={13}/></button>
+      </div>}
+
+      {/* Progress bar */}
+      <div style={{height:3,background:T.graphite}}>
+        <div style={{height:"100%",background:T.success,
+          width:`${findings.length>0?(findings.filter(f=>f.checked).length/findings.length)*100:0}%`,
+          transition:"width 0.5s ease"}}/>
+      </div>
+
+      {/* SVG map */}
+      <svg ref={svgRef} viewBox="0 0 100 100" style={{width:"100%",height:"auto",display:"block",
+        cursor:bookmarkMode?"crosshair":"default"}} onClick={handleSvgClick}>
+
+        {/* Base ground */}
+        <rect width="100" height="100" fill="#111111"/>
+
+        {/* Streets with labels */}
+        <rect x="0" y="0" width="100" height="8" fill="#1a1a1a" stroke="#2a2a2a" strokeWidth="0.3"/>
+        <text x="50" y="5.5" textAnchor="middle" fontSize="2.8" fill="#555" fontFamily="IBM Plex Mono,monospace">JARVIS CIRCUIT</text>
+        <rect x="92" y="0" width="8" height="100" fill="#1a1a1a" stroke="#2a2a2a" strokeWidth="0.3"/>
+        <text x="96" y="50" textAnchor="middle" fontSize="2.8" fill="#555" fontFamily="IBM Plex Mono,monospace" transform="rotate(90,96,50)">HALIFAX STREET</text>
+
+        {/* Park boundary */}
+        <rect x="5" y="12" width="84" height="82" rx="2" fill="#141d10" stroke="#2a3520" strokeWidth="0.4"/>
+
+        {/* Canopy zones — tree clusters */}
+        {[[18,20,6],[12,55,5],[32,30,4],[48,70,5],[60,80,4],[18,78,4],[45,85,3]].map(([cx,cy,r],i)=>(
+          <g key={i}>
+            <circle cx={cx} cy={cy} r={r} fill="#1a2814" stroke="#243520" strokeWidth="0.3" opacity="0.8"/>
+            <circle cx={cx-r*0.3} cy={cy-r*0.3} r={r*0.6} fill="#1e3018" opacity="0.5"/>
+          </g>
+        ))}
+
+        {/* Ground surface zones */}
+        {/* Open lawn */}
+        <rect x="8" y="30" width="28" height="30" rx="2" fill="#182215" opacity="0.6"/>
+        <text x="22" y="47" textAnchor="middle" fontSize="2" fill="#3a5a30" fontFamily="IBM Plex Mono,monospace" fontStyle="italic">open lawn</text>
+
+        {/* Paths network */}
+        <path d="M 15 12 Q 25 35, 45 45 Q 65 55, 80 94" fill="none" stroke="#2a2a2a" strokeWidth="1.4" strokeDasharray="2,1"/>
+        <path d="M 5 50 L 89 50" fill="none" stroke="#222" strokeWidth="1"/>
+        <path d="M 45 12 L 45 94" fill="none" stroke="#222" strokeWidth="0.6" strokeDasharray="1.5,1" opacity="0.5"/>
+        <path d="M 5 70 L 89 70" fill="none" stroke="#222" strokeWidth="0.6" strokeDasharray="1.5,1" opacity="0.4"/>
+
+        {/* Desire line F1 */}
+        <path d="M 50 30 L 88 50" fill="none" stroke="#f36458" strokeWidth="0.7" strokeDasharray="1.5,1" opacity="0.45"/>
+
+        {/* Drainage low corner */}
+        <ellipse cx="20" cy="82" rx="12" ry="8" fill="#0d1a10" stroke="#1a2a18" strokeWidth="0.4" opacity="0.7"/>
+        <text x="20" y="84" textAnchor="middle" fontSize="1.8" fill="#2a4a28" fontFamily="IBM Plex Mono,monospace" fontStyle="italic">drainage</text>
+
+        {/* Playground */}
+        <rect x="38" y="14" width="28" height="18" rx="2" fill="#1e1e18" stroke="#333" strokeWidth="0.3"/>
+        <text x="52" y="24.5" textAnchor="middle" fontSize="2.2" fill="#666" fontFamily="IBM Plex Mono,monospace">Playground</text>
+        {/* Play equipment dots */}
+        {[[42,17],[46,20],[50,17],[54,20],[58,17]].map(([px,py],i)=>(
+          <circle key={i} cx={px} cy={py} r="0.8" fill="#444" opacity="0.6"/>
+        ))}
+
+        {/* Skate area */}
+        <rect x="26" y="54" width="22" height="18" rx="2" fill="#1a1a14" stroke="#333" strokeWidth="0.3"/>
+        <ellipse cx="37" cy="63" rx="8" ry="5" fill="#222" stroke="#2a2a2a" strokeWidth="0.4" opacity="0.7"/>
+        <text x="37" y="75" textAnchor="middle" fontSize="2.2" fill="#666" fontFamily="IBM Plex Mono,monospace">Skate area</text>
+
+        {/* BBQ + seating */}
+        <rect x="58" y="60" width="16" height="12" rx="1.5" fill="#1e1e18" stroke="#333" strokeWidth="0.3"/>
+        <rect x="60" y="62" width="5" height="3" rx="0.5" fill="#333"/>
+        <rect x="67" y="62" width="5" height="3" rx="0.5" fill="#333"/>
+        <text x="66" y="74.5" textAnchor="middle" fontSize="2" fill="#666" fontFamily="IBM Plex Mono,monospace">BBQ / seating</text>
+
+        {/* Towers */}
+        <rect x="70" y="14" width="18" height="14" rx="1" fill="#252525" stroke="#444" strokeWidth="0.4"/>
+        <text x="79" y="22.5" textAnchor="middle" fontSize="2" fill="#888" fontFamily="IBM Plex Mono,monospace">Tower 2</text>
+        {/* Window grid */}
+        {[0,1,2].map(row=>[0,1,2,3].map(col=>(
+          <rect key={`t2-${row}-${col}`} x={71.5+col*3.5} y={15.5+row*3} width="2.5" height="2"
+            rx="0.3" fill={Math.random()>0.4?"#3a3a2a":"#1a1a1a"} opacity="0.8"/>
+        )))}
+        <rect x="70" y="32" width="18" height="14" rx="1" fill="#252525" stroke="#444" strokeWidth="0.4"/>
+        <text x="79" y="40.5" textAnchor="middle" fontSize="2" fill="#888" fontFamily="IBM Plex Mono,monospace">Tower 3</text>
+        {[0,1,2].map(row=>[0,1,2,3].map(col=>(
+          <rect key={`t3-${row}-${col}`} x={71.5+col*3.5} y={33.5+row*3} width="2.5" height="2"
+            rx="0.3" fill={Math.random()>0.4?"#3a3a2a":"#1a1a1a"} opacity="0.8"/>
+        )))}
+
+        {/* Contour lines — elevation hint */}
+        <path d="M 8 90 Q 30 85, 50 88 Q 70 91, 87 88" fill="none" stroke="#1e2e1a" strokeWidth="0.4" opacity="0.5"/>
+        <path d="M 8 80 Q 25 75, 50 78 Q 70 81, 87 79" fill="none" stroke="#1e2e1a" strokeWidth="0.3" opacity="0.4"/>
+
+        {/* Compass rose */}
+        <g transform="translate(86,90)">
+          <circle cx="0" cy="0" r="4" fill="#1a1a1a" stroke="#333" strokeWidth="0.4"/>
+          <path d="M 0 -3 L 0.8 0 L 0 3 L -0.8 0 Z" fill="#f36458" opacity="0.8"/>
+          <path d="M 0 -3 L 0 0 L 0.8 0 Z" fill="#f36458"/>
+          <text x="0" y="-4.5" textAnchor="middle" fontSize="1.6" fill="#888" fontFamily="IBM Plex Mono,monospace">N</text>
+        </g>
+
+        {/* Scale bar */}
+        <g transform="translate(8,96)">
+          <line x1="0" y1="0" x2="15" y2="0" stroke="#555" strokeWidth="0.5"/>
+          <line x1="0" y1="-0.5" x2="0" y2="0.5" stroke="#555" strokeWidth="0.5"/>
+          <line x1="15" y1="-0.5" x2="15" y2="0.5" stroke="#555" strokeWidth="0.5"/>
+          <text x="7.5" y="-1.2" textAnchor="middle" fontSize="1.6" fill="#555" fontFamily="IBM Plex Mono,monospace">~50m</text>
+        </g>
+
+        {/* Bookmark markers */}
+        {bookmarks.map(b=>{
+          const col=T.bm[b.cat]?.color||T.ash;
+          const isH=bmHover===b.id;
+          return(<g key={b.id} style={{cursor:"pointer"}}
+            onMouseEnter={()=>setBmHover(b.id)} onMouseLeave={()=>setBmHover(null)}>
+            <circle cx={b.mx} cy={b.my} r="3" fill={col} opacity="0.12" stroke="none">
+              <animate attributeName="r" values="3;4.5;3" dur="3s" repeatCount="indefinite"/>
+            </circle>
+            <polygon points={`${b.mx},${b.my-3} ${b.mx+2},${b.my+1} ${b.mx-2},${b.my+1}`}
+              fill={col} opacity={isH?1:0.75} stroke={T.canvas} strokeWidth="0.4"/>
+            <text x={b.mx} y={b.my-4.5} textAnchor="middle" fontSize="1.8" fill={col}
+              fontFamily="IBM Plex Mono,monospace" opacity="0.85">{b.cat[0]}</text>
+          </g>);
+        })}
+
+        {/* Finding markers */}
+        {findings.map(f=>{
+          const isChecked=f.checked;
+          const isFlash=flashId===f.id;
+          const col=isChecked?T.success:T.col[f.status].border;
+          return(<g key={f.id} style={{cursor:"pointer"}}
+            onMouseEnter={()=>setHover(f.id)} onMouseLeave={()=>setHover(null)}>
+            {/* Pulse ring */}
+            {!isChecked&&<circle cx={f.mx} cy={f.my} r="3.5" fill={col} opacity="0.12" stroke="none">
+              <animate attributeName="r" values="3.5;5.5;3.5" dur="2.5s" repeatCount="indefinite"/>
+            </circle>}
+            {/* Flash ring on check */}
+            {isFlash&&<circle cx={f.mx} cy={f.my} r="4" fill="none" stroke={T.success} strokeWidth="1.5" opacity="0.8">
+              <animate attributeName="r" values="4;9;12" dur="0.8s" fill="freeze"/>
+              <animate attributeName="opacity" values="0.8;0.4;0" dur="0.8s" fill="freeze"/>
+            </circle>}
+            {/* Main dot */}
+            <circle cx={f.mx} cy={f.my} r="2.2"
+              fill={isFlash?"#37cd84":col}
+              stroke={isChecked?T.success:T.canvas} strokeWidth="0.5"
+              opacity={isChecked?0.6:1}/>
+            {/* Check mark if verified */}
+            {isChecked&&<text x={f.mx} y={f.my+0.8} textAnchor="middle" fontSize="2.5"
+              fill={T.success} fontFamily="sans-serif">✓</text>}
+            {/* Label */}
+            <text x={f.mx} y={f.my-4} textAnchor="middle" fontSize="2.2"
+              fill={isChecked?T.success:T.col[f.status].text}
+              fontFamily="IBM Plex Mono,monospace" fontWeight="500" opacity={isChecked?0.6:1}>{f.id}</text>
+            {/* Check button */}
+            {!isChecked&&hover===f.id&&(
+              <g onClick={(e)=>handleCheck(f,e)} style={{cursor:"pointer"}}>
+                <circle cx={f.mx+5} cy={f.my-4} r="2.5" fill={T.success} opacity="0.9"
+                  stroke={T.canvas} strokeWidth="0.4"/>
+                <text x={f.mx+5} y={f.my-3.2} textAnchor="middle" fontSize="2.8"
+                  fill={T.canvas} fontFamily="sans-serif" fontWeight="bold">✓</text>
+              </g>
+            )}
+          </g>);
+        })}
+      </svg>
+
+      {/* Finding tooltip */}
+      {hf&&!bookmarkMode&&(<div style={{position:"absolute",top:52,right:12,width:268,
+        background:T.canvasSoft,border:`1px solid ${hf.checked?T.success:T.hairlineSoft}`,
+        borderRadius:T.rMkt,padding:14,boxShadow:"0 8px 24px rgba(0,0,0,0.5)",
+        borderLeft:`2px solid ${hf.checked?T.success:T.col[hf.status].border}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+          <span style={{fontFamily:FONT_MONO,fontSize:11,fontWeight:500,
+            color:hf.checked?T.success:T.col[hf.status].border}}>{hf.id}</span>
+          <CatTag c={hf.cat}/><ConfBadge l={hf.conf}/>
+          {hf.checked&&<span style={{fontFamily:FONT_MONO,fontSize:9,color:T.success,
+            padding:"1px 6px",borderRadius:T.rFull,border:`1px solid ${T.success}`,marginLeft:"auto"}}>✓ Verified</span>}
+        </div>
+        <p style={{fontFamily:FONT_SANS,fontSize:12,fontWeight:500,color:T.onPrimary,
+          margin:"0 0 4px",lineHeight:1.4}}>{hf.q}</p>
+        <p style={{fontFamily:FONT_SANS,fontSize:11,color:T.ash,margin:"0 0 6px",lineHeight:1.4}}>{hf.ev}</p>
+        <Eyebrow style={{color:hf.checked?T.success:T.brand}}>
+          {hf.checked?"Verified — click card to edit":"Click ✓ above to verify · click dot to edit"}
+        </Eyebrow>
+      </div>)}
+
+      {/* Bookmark tooltip */}
+      {hb&&(<div style={{position:"absolute",top:52,right:12,width:240,
+        background:T.canvasSoft,border:`1px solid ${T.bm[hb.cat]?.color||T.ash}`,
+        borderRadius:T.rMkt,padding:14,boxShadow:"0 8px 24px rgba(0,0,0,0.5)"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <span style={{width:8,height:8,borderRadius:"50%",
+              background:T.bm[hb.cat]?.color||T.ash}}/>
+            <span style={{fontFamily:FONT_MONO,fontSize:10,color:T.bm[hb.cat]?.color||T.ash}}>{hb.cat}</span>
+          </div>
+          <button onClick={()=>onRemoveBookmark(hb.id)} style={{background:"none",border:"none",
+            cursor:"pointer",color:T.mute,display:"flex",padding:2}}>
+            <Trash2 size={11}/></button>
+        </div>
+        <p style={{fontFamily:FONT_SANS,fontSize:12,color:T.onPrimary,margin:0,lineHeight:1.4}}>{hb.label}</p>
+      </div>)}
+
+      {/* Map legend */}
+      <div style={{padding:"8px 14px",borderTop:`1px solid ${T.hairlineSoft}`,
+        display:"flex",gap:14,flexWrap:"wrap",alignItems:"center"}}>
+        <Eyebrow style={{marginRight:4}}>Findings</Eyebrow>
+        {STATUSES.map(s=><div key={s} style={{display:"flex",alignItems:"center",gap:4}}>
+          <span style={{width:7,height:7,borderRadius:"50%",background:T.col[s].border}}/>
+          <span style={{fontFamily:FONT_MONO,fontSize:9,color:T.mute}}>{T.col[s].label}</span>
+        </div>)}
+        <span style={{width:1,height:12,background:T.hairlineSoft}}/>
+        <Eyebrow style={{marginRight:4}}>Bookmarks</Eyebrow>
+        {[...BM_CATS,...(customBmCats||[])].map(c=><div key={c} style={{display:"flex",alignItems:"center",gap:4}}>
+          <span style={{width:0,height:0,borderLeft:"4px solid transparent",
+            borderRight:"4px solid transparent",
+            borderBottom:`7px solid ${T.bm[c]?.color||T.ash}`}}/>
+          <span style={{fontFamily:FONT_MONO,fontSize:9,color:T.mute}}>{c}</span>
+        </div>)}
+        <span style={{width:1,height:12,background:T.hairlineSoft}}/>
+        <div style={{display:"flex",alignItems:"center",gap:4}}>
+          <span style={{width:7,height:7,borderRadius:"50%",background:T.success}}/>
+          <span style={{fontFamily:FONT_MONO,fontSize:9,color:T.success}}>Verified</span>
+        </div>
+      </div>
+    </div>
+
+    {/* Bookmark placement modal */}
+    {pendingPos&&<BookmarkModal pos={pendingPos} customCats={customBmCats}
+      onAdd={(bm)=>{onAddBookmark(bm,bm.cat);setPendingPos(null);setBookmarkMode(false);}}
+      onClose={()=>setPendingPos(null)}/>}
+  </>);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FINDING CARD
+   ═══════════════════════════════════════════════════════════════════ */
+function FCard({f,objs,onStatus,onEdit,onDragStart,checkFlash}){
+  const m=T.col[f.status];
+  const fo=objs.filter(o=>f.objs.includes(o.id));
+  const [showImp,setShowImp]=useState(false);
+  const isFlash=checkFlash===f.id;
+
+  return(<div draggable onDragStart={e=>onDragStart(e,f.id)}
+    style={{background:isFlash?"rgba(55,205,132,0.08)":f.checked?"rgba(55,205,132,0.04)":T.canvasSoft,
+      border:`1px solid ${isFlash?T.success:f.checked?T.successDark:T.hairlineSoft}`,
+      borderLeft:`2px solid ${f.checked?T.success:m.border}`,
+      borderRadius:`0 ${T.rLg} ${T.rLg} 0`,padding:"12px 14px",marginBottom:6,
+      cursor:"grab",transition:"all 0.4s ease",
+      boxShadow:isFlash?`0 0 20px rgba(55,205,132,0.3)`:"none",
+      opacity:f.checked?0.7:1}}
+    onMouseEnter={e=>{if(!f.checked){e.currentTarget.style.borderColor=T.hairline;e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,0.4)";}}}
+    onMouseLeave={e=>{e.currentTarget.style.borderColor=f.checked?T.successDark:T.hairlineSoft;e.currentTarget.style.boxShadow=isFlash?`0 0 20px rgba(55,205,132,0.3)`:"none";}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:7}}>
+      <div style={{display:"flex",alignItems:"center",gap:6}}>
+        <GripVertical size={13} style={{color:T.mute,flexShrink:0}}/>
+        <span style={{fontFamily:FONT_MONO,fontSize:11,fontWeight:500,
+          color:f.checked?T.success:m.border}}>{f.id}</span>
+        <CatTag c={f.cat}/>
+        {f.checked&&<span style={{fontFamily:FONT_MONO,fontSize:9,color:T.success,
+          padding:"1px 6px",borderRadius:T.rFull,border:`1px solid ${T.success}`,
+          display:"flex",alignItems:"center",gap:3}}><Check size={9}/>Verified</span>}
+      </div>
+      <ConfBadge l={f.conf}/>
+    </div>
+    <p style={{fontFamily:FONT_SANS,fontSize:13,fontWeight:400,color:f.checked?T.ash:T.onPrimary,
+      margin:"0 0 5px",lineHeight:1.45,letterSpacing:"-0.1px",
+      textDecoration:f.checked?"line-through":"none"}}>{f.q}</p>
+    <p style={{fontFamily:FONT_SANS,fontSize:12,color:T.mute,margin:"0 0 6px",lineHeight:1.4}}>{f.ev}</p>
+    {f.imp&&<div style={{marginBottom:8}}>
+      <button onClick={e=>{e.stopPropagation();setShowImp(!showImp)}} style={{display:"flex",
+        alignItems:"center",gap:4,background:"none",border:"none",cursor:"pointer",
+        padding:"2px 0",fontFamily:FONT_MONO,fontSize:10,color:T.brand}}>
+        {showImp?<ChevronDown size={11}/>:<ChevronRight size={11}/>}Brief implication</button>
+      {showImp&&<div style={{fontFamily:FONT_SANS,fontSize:12,padding:"6px 10px",marginTop:4,
+        background:T.canvas,borderRadius:T.rMd,color:T.ash,lineHeight:1.4,
+        borderLeft:`2px solid ${T.brand}`}}>{f.imp}</div>}
+    </div>}
+    {f.res&&<div style={{fontFamily:FONT_SANS,fontSize:12,padding:"6px 10px",marginBottom:8,
+      background:T.canvas,borderRadius:T.rMd,color:T.col.resolved.text,lineHeight:1.4,
+      borderLeft:`2px solid ${T.col.resolved.border}`}}>
+      <span style={{fontWeight:500}}>Resolution — </span>{f.res}</div>}
+    {f.dr&&<div style={{fontFamily:FONT_SANS,fontSize:12,padding:"6px 10px",marginBottom:8,
+      background:T.canvas,borderRadius:T.rMd,color:T.col.designed.text,lineHeight:1.4,
+      borderLeft:`2px solid ${T.col.designed.border}`}}>
+      <span style={{fontWeight:500}}>Design response — </span>{f.dr}</div>}
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6,marginTop:4}}>
+      <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+        {fo.map(o=><ObjTag key={o.id} name={o.short}/>)}
+        {fo.length===0&&<span style={{fontFamily:FONT_MONO,fontSize:10,color:T.mute,fontStyle:"italic"}}>No objectives tagged</span>}
+      </div>
+      <div style={{display:"flex",gap:4,alignItems:"center"}}>
+        <button onClick={()=>onEdit(f)} style={{background:"none",border:`1px solid ${T.hairlineSoft}`,
+          borderRadius:T.rSm,padding:"3px 6px",cursor:"pointer",display:"flex",alignItems:"center",color:T.mute}}>
+          <Pencil size={11}/></button>
+        <StatusDrop current={f.status} onChange={s=>onStatus(f.id,s)}/>
+      </div>
+    </div>
+  </div>);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   EDIT MODAL
+   ═══════════════════════════════════════════════════════════════════ */
+function EditModal({f:init,objs,onSave,onClose,isNew}){
+  const [f,setF]=useState({...init});
+  const fs={width:"100%",padding:"8px 10px",fontSize:13,fontFamily:FONT_SANS,
+    border:`1px solid ${T.hairlineSoft}`,borderRadius:T.rMd,
+    background:T.canvas,color:T.onPrimary,resize:"vertical",boxSizing:"border-box",outline:"none"};
+  const ls={fontFamily:FONT_MONO,fontSize:11,color:T.mute,marginBottom:5,display:"block",
+    textTransform:"uppercase",letterSpacing:"0.07em"};
+  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",display:"flex",
+    alignItems:"center",justifyContent:"center",zIndex:1000}} onClick={onClose}>
+    <div onClick={e=>e.stopPropagation()} style={{background:T.canvasSoft,
+      border:`1px solid ${T.hairlineSoft}`,borderRadius:T.rMkt,padding:28,width:"100%",
+      maxWidth:560,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 16px 48px rgba(0,0,0,0.5)"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:22}}>
+        <div>
+          <Eyebrow>{isNew?"New finding":"Edit finding"}</Eyebrow>
+          <h2 style={{fontFamily:FONT_SANS,fontSize:22,fontWeight:400,color:T.onPrimary,
+            margin:"4px 0 0",letterSpacing:"-0.3px"}}>{isNew?"Add to board":`${init.id}`}</h2>
+        </div>
+        <button onClick={onClose} style={{background:"none",border:`1px solid ${T.hairlineSoft}`,
+          borderRadius:T.rSm,padding:6,cursor:"pointer",color:T.mute,display:"flex"}}>
+          <X size={16}/></button>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:16}}>
+        <div><label style={ls}>Category</label>
+          <input style={fs} value={f.cat} onChange={e=>setF({...f,cat:e.target.value})} placeholder="e.g. Movement, Drainage..."/></div>
+        <div><label style={ls}>Evidence</label>
+          <textarea style={{...fs,minHeight:60}} value={f.ev} onChange={e=>setF({...f,ev:e.target.value})}/></div>
+        <div><label style={ls}>Investigation question</label>
+          <textarea style={{...fs,minHeight:60}} value={f.q} onChange={e=>setF({...f,q:e.target.value})}/></div>
+        <div><label style={ls}>Brief implication</label>
+          <textarea style={{...fs,minHeight:60}} value={f.imp} onChange={e=>setF({...f,imp:e.target.value})}/></div>
+        <div><label style={ls}>Confidence</label>
+          <select style={{...fs,cursor:"pointer"}} value={f.conf} onChange={e=>setF({...f,conf:e.target.value})}>
+            <option>High</option><option>Medium</option><option>Low</option></select></div>
+        <div><label style={ls}>Brief objectives</label>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+            {objs.map(o=>{const a=f.objs.includes(o.id);return(
+              <button key={o.id} onClick={()=>setF({...f,objs:a?f.objs.filter(x=>x!==o.id):[...f.objs,o.id]})}
+                style={{fontFamily:FONT_MONO,fontSize:10,padding:"4px 10px",borderRadius:T.rFull,
+                  cursor:"pointer",border:`1px solid ${a?T.brand:T.hairlineSoft}`,
+                  background:a?"rgba(243,100,88,0.1)":"transparent",
+                  color:a?T.brand:T.ash}}>{o.short}</button>)})}</div></div>
+        <div><label style={ls}>Resolution notes</label>
+          <textarea style={{...fs,minHeight:50}} value={f.res} onChange={e=>setF({...f,res:e.target.value})} placeholder="What was confirmed or ruled out..."/></div>
+        <div><label style={ls}>Design response</label>
+          <textarea style={{...fs,minHeight:50}} value={f.dr} onChange={e=>setF({...f,dr:e.target.value})} placeholder="What design move addresses this..."/></div>
+      </div>
+      <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:22}}>
+        <button onClick={onClose} style={{padding:"8px 18px",fontFamily:FONT_SANS,fontSize:13,
+          fontWeight:500,borderRadius:T.rFull,border:`1px solid ${T.hairlineSoft}`,
+          background:"transparent",cursor:"pointer",color:T.ash}}>Cancel</button>
+        <button onClick={()=>{onSave(f);onClose()}} style={{padding:"8px 20px",fontFamily:FONT_SANS,
+          fontSize:13,fontWeight:500,borderRadius:T.rFull,border:"none",
+          background:T.brand,color:T.ink,cursor:"pointer"}}>
+          {isNew?"Add to board":"Save changes"}</button>
+      </div>
+    </div>
+  </div>);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   KANBAN COLUMN
+   ═══════════════════════════════════════════════════════════════════ */
+function KCol({status,findings,objs,onStatus,onEdit,onDrop,checkFlash}){
+  const m=T.col[status];const [dOver,setDOver]=useState(false);
+  return(<div onDragOver={e=>{e.preventDefault();setDOver(true)}} onDragLeave={()=>setDOver(false)}
+    onDrop={e=>{e.preventDefault();setDOver(false);onDrop(e,status)}}
+    style={{flex:1,minWidth:0,background:dOver?"rgba(255,255,255,0.02)":"transparent",
+      borderRadius:T.rLg,padding:"0 4px",transition:"background 0.15s",
+      border:dOver?`1px dashed ${m.border}`:"1px solid transparent"}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",
+      padding:"10px 10px 8px",borderBottom:`1px solid ${m.border}`,marginBottom:10}}>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <span style={{fontFamily:FONT_SANS,fontSize:13,fontWeight:500,color:m.border}}>{m.label}</span>
+        <span style={{fontFamily:FONT_MONO,fontSize:10,fontWeight:500,width:18,height:18,
+          borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",
+          background:m.bg,color:m.text,border:`1px solid ${m.border}`}}>{findings.length}</span>
+      </div>
+    </div>
+    <div style={{minHeight:60}}>
+      {findings.map(f=><FCard key={f.id} f={f} objs={objs} onStatus={onStatus} onEdit={onEdit}
+        checkFlash={checkFlash} onDragStart={(e,id)=>e.dataTransfer.setData("text/plain",id)}/>)}
+      {findings.length===0&&<div style={{padding:"20px 10px",textAlign:"center",
+        fontFamily:FONT_MONO,fontSize:10,color:T.mute,fontStyle:"italic",
+        border:`1px dashed ${T.hairlineSoft}`,borderRadius:T.rMd}}>Drag findings here</div>}
+    </div>
+  </div>);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   COVERAGE VIEW
+   ═══════════════════════════════════════════════════════════════════ */
+function CoverageView({objs,findings}){
+  return(<div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))",gap:10,marginBottom:20}}>
+      {[{l:"Total findings",v:findings.length,i:<Layers size={15}/>},
+        {l:"Unresolved",v:findings.filter(f=>f.status==="flagged"||f.status==="investigating").length,i:<AlertTriangle size={15}/>},
+        {l:"Verified",v:findings.filter(f=>f.checked).length,i:<CheckCircle size={15}/>},
+        {l:"Coverage",v:objs.filter(o=>findings.some(f=>f.objs.includes(o.id))).length+"/"+objs.length,i:<Target size={15}/>},
+      ].map((s,i)=>(
+        <div key={i} style={{background:T.canvasSoft,borderRadius:T.rLg,padding:"14px 16px",
+          border:`1px solid ${T.hairlineSoft}`}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+            <span style={{color:T.mute}}>{s.i}</span><Eyebrow>{s.l}</Eyebrow>
+          </div>
+          <span style={{fontFamily:FONT_SANS,fontSize:24,fontWeight:300,color:T.onPrimary,letterSpacing:"-0.5px"}}>{s.v}</span>
+        </div>
+      ))}
+    </div>
+    <div style={{background:T.canvasSoft,border:`1px solid ${T.hairlineSoft}`,borderRadius:T.rLg,padding:22}}>
+      <Eyebrow style={{display:"block",marginBottom:14}}>Brief objective coverage</Eyebrow>
+      {objs.map(obj=>{
+        const tg=findings.filter(f=>f.objs.includes(obj.id));
+        const d=tg.filter(f=>f.status==="designed").length,rv=tg.filter(f=>f.status==="resolved").length,
+          iv=tg.filter(f=>f.status==="investigating").length,fl=tg.filter(f=>f.status==="flagged").length,tot=tg.length;
+        return(<div key={obj.id} style={{marginBottom:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:7}}>
+            <span style={{fontFamily:FONT_SANS,fontSize:13,fontWeight:400,color:T.onPrimary}}>{obj.name}</span>
+            <span style={{fontFamily:FONT_MONO,fontSize:11,color:T.mute}}>{tot} finding{tot!==1?"s":""}</span>
+          </div>
+          {tot===0
+            ?<><div style={{height:6,borderRadius:3,background:T.canvas,position:"relative",overflow:"hidden"}}>
+              <div style={{position:"absolute",inset:0,background:`repeating-linear-gradient(45deg,transparent,transparent 4px,rgba(243,100,88,0.1) 4px,rgba(243,100,88,0.1) 8px)`}}/></div>
+              <span style={{fontFamily:FONT_MONO,fontSize:10,color:T.brand,fontStyle:"italic",marginTop:3,display:"block"}}>Blind spot — no site evidence</span></>
+            :<div style={{display:"flex",gap:2,height:6,borderRadius:3,overflow:"hidden"}}>
+              {d>0&&<div style={{flex:d,background:T.col.designed.border}}/>}
+              {rv>0&&<div style={{flex:rv,background:T.col.resolved.border}}/>}
+              {iv>0&&<div style={{flex:iv,background:T.col.investigating.border}}/>}
+              {fl>0&&<div style={{flex:fl,background:T.col.flagged.border}}/>}
+            </div>}
+        </div>);})}
+      <div style={{display:"flex",gap:16,marginTop:14,paddingTop:14,borderTop:`1px solid ${T.hairlineSoft}`,flexWrap:"wrap"}}>
+        {STATUSES.map(s=><div key={s} style={{display:"flex",alignItems:"center",gap:5}}>
+          <span style={{width:8,height:8,borderRadius:2,background:T.col[s].border}}/>
+          <Eyebrow>{T.col[s].label}</Eyebrow></div>)}
+      </div>
+    </div>
+  </div>);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   BLIND SPOT VIEW
+   ═══════════════════════════════════════════════════════════════════ */
+function BlindSpotView({findings,objs}){
+  const unresolved=findings.filter(f=>f.status==="flagged"||f.status==="investigating");
+  const uncovered=objs.filter(o=>!findings.some(f=>f.objs.includes(o.id)));
+  const designed=findings.filter(f=>f.status==="designed");
+  return(<div>
+    <div style={{background:T.canvasSoft,border:`1px solid ${T.hairlineSoft}`,borderRadius:T.rLg,padding:24,marginBottom:14}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+        <Upload size={16} style={{color:T.brand}}/>
+        <span style={{fontFamily:FONT_SANS,fontSize:15,fontWeight:500,color:T.onPrimary,letterSpacing:"-0.2px"}}>Upload final scheme</span>
+      </div>
+      <p style={{fontFamily:FONT_SANS,fontSize:13,color:T.ash,lineHeight:1.55,margin:"0 0 18px"}}>
+        Upload your final massing diagram or site plan. The audit skill re-runs against original findings and flags any the design contradicts or leaves unaddressed.
+      </p>
+      <div style={{border:`1px dashed ${T.hairlineSoft}`,borderRadius:T.rMd,padding:"32px 24px",
+        textAlign:"center",background:T.canvas,cursor:"pointer",transition:"border-color 0.15s"}}
+        onMouseEnter={e=>e.currentTarget.style.borderColor=T.brand}
+        onMouseLeave={e=>e.currentTarget.style.borderColor=T.hairlineSoft}>
+        <Upload size={24} style={{color:T.mute,marginBottom:8}}/>
+        <p style={{fontFamily:FONT_SANS,fontSize:13,fontWeight:500,color:T.onPrimary,margin:"0 0 4px"}}>Drop scheme here or click to browse</p>
+        <Eyebrow>PNG, JPG, or PDF · max 10 MB</Eyebrow>
+      </div>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+      <div style={{background:T.canvasSoft,border:`1px solid ${T.hairlineSoft}`,borderRadius:T.rLg,padding:18}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
+          <AlertTriangle size={14} style={{color:T.brand}}/><Eyebrow style={{color:T.brand}}>Unresolved ({unresolved.length})</Eyebrow>
+        </div>
+        {unresolved.map(f=>(<div key={f.id} style={{padding:"7px 10px",marginBottom:5,borderRadius:T.rMd,
+          background:T.canvas,borderLeft:`2px solid ${T.col[f.status].border}`}}>
+          <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:3}}>
+            <span style={{fontFamily:FONT_MONO,fontSize:10,fontWeight:500,color:T.col[f.status].border}}>{f.id}</span>
+            <CatTag c={f.cat}/></div>
+          <p style={{fontFamily:FONT_SANS,fontSize:11,color:T.ash,margin:0,lineHeight:1.3}}>{f.q}</p>
+        </div>))}
+        {unresolved.length===0&&<p style={{fontFamily:FONT_MONO,fontSize:11,color:T.success,fontStyle:"italic"}}>All findings resolved</p>}
+      </div>
+      <div style={{background:T.canvasSoft,border:`1px solid ${T.hairlineSoft}`,borderRadius:T.rLg,padding:18}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
+          <Eye size={14} style={{color:T.brand}}/><Eyebrow style={{color:T.brand}}>Uncovered ({uncovered.length})</Eyebrow>
+        </div>
+        {uncovered.map(o=>(<div key={o.id} style={{padding:"7px 10px",marginBottom:5,borderRadius:T.rMd,
+          background:T.canvas,borderLeft:`2px solid ${T.brand}`}}>
+          <span style={{fontFamily:FONT_SANS,fontSize:12,color:T.ash}}>{o.name}</span>
+        </div>))}
+        {uncovered.length===0&&<p style={{fontFamily:FONT_MONO,fontSize:11,color:T.success,fontStyle:"italic"}}>All objectives covered</p>}
+      </div>
+      <div style={{background:T.canvasSoft,border:`1px solid ${T.hairlineSoft}`,borderRadius:T.rLg,padding:18}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
+          <Check size={14} style={{color:T.col.designed.border}}/><Eyebrow style={{color:T.col.designed.border}}>Addressed ({designed.length})</Eyebrow>
+        </div>
+        {designed.map(f=>(<div key={f.id} style={{padding:"7px 10px",marginBottom:5,borderRadius:T.rMd,
+          background:T.canvas,borderLeft:`2px solid ${T.col.designed.border}`}}>
+          <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:3}}>
+            <span style={{fontFamily:FONT_MONO,fontSize:10,color:T.col.designed.border}}>{f.id}</span>
+            <CatTag c={f.cat}/></div>
+          <p style={{fontFamily:FONT_SANS,fontSize:11,color:T.ash,margin:0,lineHeight:1.3}}>{f.dr||"No response recorded yet"}</p>
+        </div>))}
+        {designed.length===0&&<p style={{fontFamily:FONT_MONO,fontSize:11,color:T.mute,fontStyle:"italic"}}>No findings designed-for yet</p>}
+      </div>
+    </div>
+  </div>);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SIDEBAR
+   ═══════════════════════════════════════════════════════════════════ */
+function Sidebar({site,findings,objs,setObjs,fText,setFText,fCat,setFCat,fConf,setFConf,fObj,setFObj,cats,bookmarks,onGoHome}){
+  const [addObj,setAddObj]=useState(false);
+  const [nn,setNN]=useState("");const [ns,setNS]=useState("");
+  const counts=STATUSES.reduce((a,s)=>({...a,[s]:findings.filter(f=>f.status===s).length}),{});
+  const verified=findings.filter(f=>f.checked).length;
+  const inp={width:"100%",padding:"6px 9px",fontSize:12,fontFamily:FONT_SANS,borderRadius:T.rMd,
+    border:`1px solid ${T.hairlineSoft}`,background:T.canvas,color:T.onPrimary,boxSizing:"border-box",outline:"none"};
+  return(<div style={{width:252,flexShrink:0,background:T.canvas,color:T.ash,
+    height:"100vh",overflowY:"auto",display:"flex",flexDirection:"column",
+    borderRight:`1px solid ${T.hairlineSoft}`}}>
+    {/* Logo + home */}
+    <div style={{padding:"14px 18px",borderBottom:`1px solid ${T.hairlineSoft}`,
+      display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <span style={{width:10,height:10,borderRadius:"50%",background:T.brand,flexShrink:0}}/>
+        <span style={{fontFamily:FONT_SANS,fontSize:14,fontWeight:500,color:T.onPrimary,letterSpacing:"-0.2px"}}>Site Intelligence</span>
+      </div>
+      <button onClick={onGoHome} title="Return to homepage"
+        style={{background:"none",border:`1px solid ${T.hairlineSoft}`,borderRadius:T.rSm,
+          padding:5,cursor:"pointer",color:T.mute,display:"flex",transition:"all 0.15s"}}
+        onMouseEnter={e=>{e.currentTarget.style.borderColor=T.ash;e.currentTarget.style.color=T.onPrimary;}}
+        onMouseLeave={e=>{e.currentTarget.style.borderColor=T.hairlineSoft;e.currentTarget.style.color=T.mute;}}>
+        <Home size={13}/></button>
+    </div>
+    {/* Site info */}
+    <div style={{padding:"14px 18px",borderBottom:`1px solid ${T.hairlineSoft}`}}>
+      <Eyebrow style={{display:"block",marginBottom:8}}>Current site</Eyebrow>
+      <p style={{fontFamily:FONT_SANS,fontSize:13,fontWeight:500,color:T.onPrimary,margin:"0 0 3px",letterSpacing:"-0.1px"}}>{site.name}</p>
+      <p style={{fontFamily:FONT_MONO,fontSize:10,color:T.mute,margin:0,display:"flex",alignItems:"center",gap:4}}>
+        <MapPin size={10}/>{site.address}</p>
+      <p style={{fontFamily:FONT_MONO,fontSize:10,color:T.brand,margin:"6px 0 0",display:"flex",alignItems:"center",gap:4}}>
+        <FileText size={10}/>{site.brief}</p>
+    </div>
+    {/* Progress + stats */}
+    <div style={{padding:"14px 18px",borderBottom:`1px solid ${T.hairlineSoft}`}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+        <Eyebrow>Site verification</Eyebrow>
+        <span style={{fontFamily:FONT_MONO,fontSize:11,color:T.success}}>{verified}/{findings.length}</span>
+      </div>
+      <div style={{height:4,background:T.graphite,borderRadius:2,marginBottom:12}}>
+        <div style={{height:"100%",background:T.success,borderRadius:2,
+          width:`${findings.length>0?(verified/findings.length)*100:0}%`,transition:"width 0.4s ease"}}/>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+        {STATUSES.map(s=>(
+          <div key={s} style={{padding:"8px 10px",borderRadius:T.rMd,background:T.canvasSoft,border:`1px solid ${T.hairlineSoft}`}}>
+            <div style={{fontFamily:FONT_SANS,fontSize:20,fontWeight:300,color:T.col[s].border,letterSpacing:"-0.5px"}}>{counts[s]}</div>
+            <Eyebrow style={{color:T.mute}}>{T.col[s].label}</Eyebrow>
+          </div>))}
+      </div>
+    </div>
+    {/* Bookmarks summary */}
+    {bookmarks.length>0&&<div style={{padding:"14px 18px",borderBottom:`1px solid ${T.hairlineSoft}`}}>
+      <Eyebrow style={{display:"block",marginBottom:8}}>Bookmarks ({bookmarks.length})</Eyebrow>
+      {bookmarks.map(b=>{const col=T.bm[b.cat]?.color||T.ash;return(
+        <div key={b.id} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 0"}}>
+          <span style={{width:6,height:6,borderRadius:1,background:col,flexShrink:0,transform:"rotate(45deg)"}}/>
+          <span style={{fontFamily:FONT_SANS,fontSize:11,color:T.ash,flex:1,overflow:"hidden",
+            textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.label}</span>
+          <span style={{fontFamily:FONT_MONO,fontSize:9,color:col}}>{b.cat}</span>
+        </div>
+      );})}
+    </div>}
+    {/* Objectives */}
+    <div style={{padding:"14px 18px",borderBottom:`1px solid ${T.hairlineSoft}`}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+        <Eyebrow>Brief objectives</Eyebrow>
+        <button onClick={()=>setAddObj(!addObj)} style={{background:"none",border:"none",cursor:"pointer",color:T.brand,display:"flex",padding:2}}>
+          <Plus size={13}/></button>
+      </div>
+      {objs.map(o=>(<div key={o.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",
+        padding:"5px 8px",marginBottom:3,borderRadius:T.rMd,background:T.canvasSoft}}>
+        <span style={{fontFamily:FONT_MONO,fontSize:10,color:T.ash}}>{o.short}</span>
+        <button onClick={()=>setObjs(p=>p.filter(x=>x.id!==o.id))} style={{background:"none",border:"none",
+          cursor:"pointer",color:T.mute,padding:2,display:"flex",opacity:0.5}}><X size={10}/></button>
+      </div>))}
+      {addObj&&<div style={{marginTop:7,display:"flex",flexDirection:"column",gap:5}}>
+        <input value={nn} onChange={e=>setNN(e.target.value)} placeholder="Objective name" style={inp}
+          onKeyDown={e=>{if(e.key==="Enter"&&nn.trim()){setObjs(p=>[...p,{id:"o"+Date.now(),name:nn.trim(),short:ns.trim()||nn.trim().substring(0,20)}]);setNN("");setNS("");setAddObj(false);}}}/>
+        <input value={ns} onChange={e=>setNS(e.target.value)} placeholder="Short label" style={inp}/>
+        <button onClick={()=>{if(nn.trim()){setObjs(p=>[...p,{id:"o"+Date.now(),name:nn.trim(),short:ns.trim()||nn.trim().substring(0,20)}]);setNN("");setNS("");setAddObj(false);}}}
+          style={{fontFamily:FONT_SANS,fontSize:12,fontWeight:500,padding:"5px 10px",borderRadius:T.rFull,
+            border:"none",background:T.brand,color:T.ink,cursor:"pointer"}}>Add</button>
+      </div>}
+    </div>
+    {/* Filters */}
+    <div style={{padding:"14px 18px",flex:1}}>
+      <Eyebrow style={{display:"block",marginBottom:10}}>Filters</Eyebrow>
+      <div style={{position:"relative",marginBottom:7}}>
+        <Search size={12} style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:T.mute}}/>
+        <input value={fText} onChange={e=>setFText(e.target.value)} placeholder="Search findings..."
+          style={{...inp,paddingLeft:26}}/>
+      </div>
+      {[{v:fCat,set:setFCat,opts:[{v:"all",l:"All categories"},...cats.map(c=>({v:c,l:c}))]},
+        {v:fConf,set:setFConf,opts:[{v:"all",l:"All confidence"},{v:"High",l:"High"},{v:"Medium",l:"Medium"},{v:"Low",l:"Low"}]},
+        {v:fObj,set:setFObj,opts:[{v:"all",l:"All objectives"},...objs.map(o=>({v:o.id,l:o.short}))]},
+      ].map((sel,i)=>(
+        <select key={i} value={sel.v} onChange={e=>sel.set(e.target.value)}
+          style={{...inp,marginBottom:6,cursor:"pointer"}}>
+          {sel.opts.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
+        </select>
+      ))}
+      {(fText||fCat!=="all"||fConf!=="all"||fObj!=="all")&&
+        <button onClick={()=>{setFText("");setFCat("all");setFConf("all");setFObj("all")}}
+          style={{fontFamily:FONT_MONO,fontSize:10,padding:"4px 10px",borderRadius:T.rFull,
+            border:`1px solid ${T.hairlineSoft}`,cursor:"pointer",background:"transparent",
+            color:T.brand,display:"flex",alignItems:"center",gap:4,width:"100%",justifyContent:"center",marginTop:4}}>
+          <X size={10}/>Clear filters</button>}
+    </div>
+  </div>);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   LANDING PAGE
+   ═══════════════════════════════════════════════════════════════════ */
+function Landing({onStart}){
+  const [addr,setAddr]=useState(SITE.address);
+  const [proj,setProj]=useState(SITE.brief);
+  const [hover,setHover]=useState(false);
+  return(<div style={{minHeight:"100vh",background:T.canvas,fontFamily:FONT_SANS,display:"flex",flexDirection:"column"}}>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+    <nav style={{display:"flex",alignItems:"center",justifyContent:"space-between",
+      padding:"0 48px",height:56,borderBottom:`1px solid ${T.graphite}`,flexShrink:0}}>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <span style={{width:10,height:10,borderRadius:"50%",background:T.brand,flexShrink:0}}/>
+        <span style={{fontFamily:FONT_SANS,fontSize:15,fontWeight:500,color:T.onPrimary,letterSpacing:"-0.2px"}}>Site Intelligence</span>
+      </div>
+      <Eyebrow style={{color:T.mute}}>Urban design · AI workflow</Eyebrow>
+    </nav>
+    <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",
+      justifyContent:"center",padding:"80px 48px 64px",maxWidth:760,margin:"0 auto",width:"100%"}}>
+      <div style={{marginBottom:20,display:"flex",alignItems:"center",gap:10}}>
+        <span style={{width:20,height:1,background:T.brand,display:"inline-block"}}/>
+        <Eyebrow style={{color:T.brand}}>Pre-site investigation</Eyebrow>
+      </div>
+      <h1 style={{fontFamily:FONT_SANS,fontSize:60,fontWeight:300,color:T.onPrimary,
+        margin:"0 0 20px",lineHeight:1.0,letterSpacing:"-2.5px",textAlign:"center"}}>
+        Surface what the site<br/><span style={{color:T.brand}}>isn't</span> showing you.
+      </h1>
+      <p style={{fontFamily:FONT_SANS,fontSize:17,fontWeight:400,color:T.ash,
+        lineHeight:1.6,margin:"0 0 48px",textAlign:"center",maxWidth:480,letterSpacing:"-0.1px"}}>
+        Cross-reference aerial and ground imagery to reveal hidden site phenomena — desire lines, drainage anomalies, informal use — before your visit.
+      </p>
+      <div style={{width:"100%",maxWidth:480,background:T.canvasSoft,
+        border:`1px solid ${T.hairlineSoft}`,borderRadius:T.rMkt,padding:28,
+        boxShadow:"0 8px 32px rgba(0,0,0,0.3)"}}>
+        <div style={{marginBottom:16}}>
+          <label style={{fontFamily:FONT_MONO,fontSize:11,color:T.mute,marginBottom:7,
+            display:"block",textTransform:"uppercase",letterSpacing:"0.07em"}}>Site address</label>
+          <div style={{display:"flex",alignItems:"center",gap:8,background:T.canvas,
+            border:`1px solid ${T.hairlineSoft}`,borderRadius:T.rMd,padding:"0 12px",height:44}}>
+            <MapPin size={14} style={{color:T.mute,flexShrink:0}}/>
+            <input value={addr} onChange={e=>setAddr(e.target.value)}
+              style={{flex:1,fontSize:14,border:"none",background:"transparent",
+                color:T.onPrimary,outline:"none",fontFamily:FONT_SANS}}/>
+          </div>
+        </div>
+        <div style={{marginBottom:24}}>
+          <label style={{fontFamily:FONT_MONO,fontSize:11,color:T.mute,marginBottom:7,
+            display:"block",textTransform:"uppercase",letterSpacing:"0.07em"}}>Project brief</label>
+          <input value={proj} onChange={e=>setProj(e.target.value)}
+            style={{width:"100%",padding:"0 12px",height:44,fontSize:14,
+              border:`1px solid ${T.hairlineSoft}`,borderRadius:T.rMd,
+              background:T.canvas,color:T.onPrimary,outline:"none",
+              fontFamily:FONT_SANS,boxSizing:"border-box"}}/>
+        </div>
+        <button onClick={()=>onStart({addr,proj})}
+          onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}
+          style={{width:"100%",height:48,fontSize:15,fontWeight:500,fontFamily:FONT_SANS,
+            borderRadius:T.rFull,border:"none",background:hover?T.brandDeep:T.brand,
+            color:T.ink,cursor:"pointer",display:"flex",alignItems:"center",
+            justifyContent:"center",gap:8,letterSpacing:"-0.1px",transition:"background 0.15s"}}>
+          Launch audit <ArrowRight size={16}/>
+        </button>
+      </div>
+      <p style={{fontFamily:FONT_MONO,fontSize:11,color:T.mute,marginTop:20,textAlign:"center"}}>
+        Imagery via Google Static Maps + Street View APIs · Pre-loaded with Lachlan's Lines Park demo
+      </p>
+    </div>
+    <div style={{background:T.canvasPaper,borderTop:`1px solid ${T.hairline}`,
+      padding:"20px 48px",display:"flex",gap:40,justifyContent:"center"}}>
+      {[{label:"Cross-references",desc:"aerial + ground views"},
+        {label:"Generates",desc:"falsifiable site questions"},
+        {label:"Tracks findings",desc:"through to design response"},
+      ].map((item,i)=>(<div key={i} style={{textAlign:"center"}}>
+        <Eyebrow style={{color:T.inkSoft,display:"block",marginBottom:3}}>{item.label}</Eyebrow>
+        <span style={{fontFamily:FONT_SANS,fontSize:13,color:T.mute}}>{item.desc}</span>
+      </div>))}
+    </div>
+  </div>);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   DASHBOARD
+   ═══════════════════════════════════════════════════════════════════ */
+function Dashboard({onGoHome}){
+  const [findings,setFindings]=useState(DEMO_F);
+  const [objs,setObjs]=useState(DEMO_OBJ);
+  const [bookmarks,setBookmarks]=useState(DEMO_BM);
+  const [customBmCats,setCustomBmCats]=useState([]);
+  const [view,setView]=useState("map");
+  const [editing,setEditing]=useState(null);
+  const [showAdd,setShowAdd]=useState(false);
+  const [fText,setFText]=useState("");
+  const [fCat,setFCat]=useState("all");
+  const [fConf,setFConf]=useState("all");
+  const [fObj,setFObj]=useState("all");
+  const [checkSheet,setCheckSheet]=useState(null);
+  const [checkFlash,setCheckFlash]=useState(null);
+  const confetti=useConfetti();
+
+  const cats=[...new Set(findings.map(f=>f.cat))].sort();
+  const filtered=findings.filter(f=>{
+    if(fText&&!(`${f.id} ${f.q} ${f.ev} ${f.cat}`).toLowerCase().includes(fText.toLowerCase()))return false;
+    if(fCat!=="all"&&f.cat!==fCat)return false;
+    if(fConf!=="all"&&f.conf!==fConf)return false;
+    if(fObj!=="all"&&!f.objs.includes(fObj))return false;
+    return true;
+  });
+
+  const onStatus=useCallback((id,s)=>setFindings(p=>p.map(f=>f.id===id?{...f,status:s}:f)),[]);
+  const onDrop=useCallback((e,s)=>{const id=e.dataTransfer.getData("text/plain");if(id)onStatus(id,s);},[onStatus]);
+  const onSave=useCallback(ed=>setFindings(p=>p.map(f=>f.id===ed.id?ed:f)),[]);
+
+  const handleCheck=useCallback((finding)=>{
+    setFindings(p=>p.map(f=>f.id===finding.id?{...f,checked:true}:f));
+    setCheckFlash(finding.id);
+    setTimeout(()=>setCheckFlash(null),1400);
+    setCheckSheet(finding);
+  },[]);
+
+  const handleAddBookmark=useCallback((bm,cat)=>{
+    if(!BM_CATS.includes(cat)&&!customBmCats.includes(cat)){
+      setCustomBmCats(p=>[...p,cat]);
+    }
+    setBookmarks(p=>[...p,bm]);
+  },[customBmCats]);
+
+  const views=[
+    {k:"map",l:"Map",i:<Map size={13}/>},
+    {k:"board",l:"Board",i:<Layout size={13}/>},
+    {k:"coverage",l:"Coverage",i:<BarChart3 size={13}/>},
+    {k:"blindspot",l:"Blind spots",i:<Eye size={13}/>},
+  ];
+
+  return(<div style={{display:"flex",height:"100vh",fontFamily:FONT_SANS,color:T.onPrimary,fontSize:14,background:T.canvas}}>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+    <ConfettiLayer particles={confetti.particles}/>
+
+    <Sidebar site={SITE} findings={findings} objs={objs} setObjs={setObjs}
+      fText={fText} setFText={setFText} fCat={fCat} setFCat={setFCat}
+      fConf={fConf} setFConf={setFConf} fObj={fObj} setFObj={setFObj}
+      cats={cats} bookmarks={bookmarks} onGoHome={onGoHome}/>
+
+    <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0,background:T.canvas}}>
+      <div style={{background:T.canvas,borderBottom:`1px solid ${T.hairlineSoft}`,
+        padding:"0 20px",display:"flex",alignItems:"center",justifyContent:"space-between",
+        height:48,flexShrink:0}}>
+        <div style={{display:"flex",gap:0}}>
+          {views.map(v=>(<button key={v.k} onClick={()=>setView(v.k)} style={{display:"flex",alignItems:"center",gap:5,
+            padding:"6px 14px",fontFamily:FONT_SANS,fontSize:13,
+            fontWeight:view===v.k?500:400,border:"none",cursor:"pointer",
+            borderBottom:view===v.k?`1px solid ${T.brand}`:"1px solid transparent",
+            background:"transparent",color:view===v.k?T.onPrimary:T.mute,
+            marginBottom:-1,transition:"color 0.15s"}}>{v.i}{v.l}</button>))}
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <button onClick={()=>setShowAdd(true)} style={{display:"flex",alignItems:"center",gap:5,
+            padding:"5px 14px",fontFamily:FONT_SANS,fontSize:12,fontWeight:500,
+            borderRadius:T.rFull,border:"none",background:T.brand,color:T.ink,cursor:"pointer"}}
+            onMouseEnter={e=>e.currentTarget.style.background=T.brandDeep}
+            onMouseLeave={e=>e.currentTarget.style.background=T.brand}>
+            <Plus size={13}/>Add finding</button>
+          <button onClick={()=>{setFindings(DEMO_F);setObjs(DEMO_OBJ);setBookmarks(DEMO_BM);}}
+            title="Reset demo data"
+            style={{display:"flex",alignItems:"center",padding:"5px 8px",borderRadius:T.rMd,
+              border:`1px solid ${T.hairlineSoft}`,background:"transparent",cursor:"pointer",color:T.mute}}>
+            <RotateCcw size={13}/></button>
+        </div>
+      </div>
+
+      <div style={{flex:1,overflowY:"auto",padding:16}}>
+        {view==="map"&&<SiteMap findings={filtered} bookmarks={bookmarks}
+          customBmCats={customBmCats} objs={objs}
+          onSelect={f=>setEditing(f)} onCheck={handleCheck}
+          onAddBookmark={handleAddBookmark}
+          onRemoveBookmark={id=>setBookmarks(p=>p.filter(b=>b.id!==id))}
+          confetti={confetti}/>}
+        {view==="board"&&<div style={{display:"flex",gap:10,overflowX:"auto"}}>
+          {STATUSES.map(s=><KCol key={s} status={s} findings={filtered.filter(f=>f.status===s)}
+            objs={objs} onStatus={onStatus} onEdit={setEditing} onDrop={onDrop} checkFlash={checkFlash}/>)}</div>}
+        {view==="coverage"&&<CoverageView objs={objs} findings={findings}/>}
+        {view==="blindspot"&&<BlindSpotView findings={findings} objs={objs}/>}
+      </div>
+    </div>
+
+    {editing&&<EditModal f={editing} objs={objs} onSave={onSave} onClose={()=>setEditing(null)}/>}
+    {showAdd&&<EditModal isNew f={{id:"F"+(findings.length+1),status:"flagged",cat:"",ev:"",q:"",imp:"",
+      conf:"Medium",objs:[],res:"",dr:"",mx:50,my:50,checked:false}} objs={objs}
+      onSave={nf=>setFindings(p=>[...p,nf])} onClose={()=>setShowAdd(false)}/>}
+    {checkSheet&&<CheckOffSheet finding={checkSheet}
+      onKeep={()=>setCheckSheet(null)}
+      onRemove={()=>{setFindings(p=>p.filter(f=>f.id!==checkSheet.id));setCheckSheet(null);}}
+      onMarkBoard={()=>{onStatus(checkSheet.id,"resolved");setCheckSheet(null);}}
+      onClose={()=>setCheckSheet(null)}/>}
+  </div>);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   APP ROOT
+   ═══════════════════════════════════════════════════════════════════ */
+export default function App(){
+  const [started,setStarted]=useState(false);
+  return started
+    ?<Dashboard onGoHome={()=>setStarted(false)}/>
+    :<Landing onStart={()=>setStarted(true)}/>;
+}
